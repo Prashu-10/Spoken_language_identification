@@ -2,14 +2,7 @@
   "supported_languages": [
     "en", "es", "fr", "de", "it", "pt", "nl", "pl", "ru", "uk",
     "ar", "hi", "bn", "ta", "te", "mr", "ur", "fa", "tr", "he",
-    "th", "vi", "id", "ms", "fil", "ja", "ko", "zh", "yue", "sw",
-    "af", "am", "az", "be", "bg", "ca", "cs", "da", "el", "et",
-    "eu", "fi", "ga", "gl", "gu", "ha", "hr", "hu", "hy", "ig",
-    "is", "ka", "kk", "km", "kn", "ky", "lb", "lg", "lt", "lv",
-    "mk", "ml", "mn", "mt", "my", "ne", "no", "pa", "ps", "ro",
-    "si", "sk", "sl", "sn", "so", "sq", "sr", "sv", "tg", "tk",
-    "uz", "wo", "xh", "yi", "yo", "zu", "as", "bho", "doi", "mai",
-    "or", "raj", "sa", "sd", "cy", "fo", "gd", "kw", "fy", "rm"
+    "th", "vi", "id", "ms", "fil", "ja", "ko", "zh"
   ],
   "language_names": {
     "en": "English",
@@ -31,6 +24,14 @@
     "ur": "Urdu",
     "fa": "Persian",
     "tr": "Turkish",
-    "he": "Hebrew"
+    "he": "Hebrew",
+    "th": "Thai",
+    "vi": "Vietnamese",
+    "id": "Indonesian",
+    "ms": "Malay",
+    "fil": "Filipino",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "zh": "Chinese"
   }
 } 

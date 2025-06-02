@@ -3,9 +3,9 @@ import json
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from typing import List, Dict, Optional, Any
-from datasets import Dataset, Audio
-import soundfile as sf
+from typing import List, Dict, Optional
+from datasets import load_dataset, Dataset, load_from_disk
+from huggingface_hub import HfFileSystem
 from featurizers.speech_featurizers import NumpySpeechFeaturizer
 from configs.config import Config
 from vocab.vocab import Vocab
@@ -35,58 +35,58 @@ class MultilingualDataset:
         # Load FLEURS dataset for multiple languages
         self.load_datasets()
 
-    def load_local_dataset(self, lang: str) -> Dataset:
-        """Load dataset from local files for a specific language"""
-        lang_path = os.path.join(self.config.dataset_config['fleurs_path'], lang, self.data_type)
-        if not os.path.exists(lang_path):
-            raise ValueError(f"Dataset path not found: {lang_path}")
+    def find_dataset_path(self, lang: str) -> Optional[str]:
+        """Find the dataset path in HuggingFace cache"""
+        cache_dir = os.path.expanduser("~/.cache/huggingface/datasets")
+        dataset_dir = os.path.join(cache_dir, "google-fleurs", lang)
+        
+        if not os.path.exists(dataset_dir):
+            print(f"Dataset directory not found for language {lang}")
+            return None
+            
+        # Look for the downloaded version
+        versions = [d for d in os.listdir(dataset_dir) if os.path.isdir(os.path.join(dataset_dir, d))]
+        if not versions:
+            print(f"No dataset versions found for language {lang}")
+            return None
+            
+        # Use the latest version
+        latest_version = sorted(versions)[-1]
+        dataset_path = os.path.join(dataset_dir, latest_version)
+        
+        return dataset_path if os.path.exists(dataset_path) else None
 
-        # Load metadata
-        metadata_file = os.path.join(lang_path, f"metadata.{self.config.dataset_config['metadata_format']}")
-        if not os.path.exists(metadata_file):
-            raise ValueError(f"Metadata file not found: {metadata_file}")
-
-        with open(metadata_file, 'r', encoding='utf-8') as f:
-            metadata = json.load(f)
-
-        # Create dataset dictionary
-        dataset_dict = {
-            'audio': [],
-            'transcription': [],
-            'language': [],
-            'id': []
-        }
-
-        # Process each sample
-        for item in metadata['data']:
-            audio_path = os.path.join(lang_path, 'audio', f"{item['id']}.{self.config.dataset_config['audio_format']}")
-            if not os.path.exists(audio_path):
-                print(f"Warning: Audio file not found: {audio_path}")
-                continue
-
-            try:
-                # Load audio file
-                audio_data, sample_rate = sf.read(audio_path)
-                dataset_dict['audio'].append({
-                    'array': audio_data,
-                    'sampling_rate': sample_rate,
-                    'path': audio_path
-                })
-                dataset_dict['transcription'].append(item.get('transcription', ''))
-                dataset_dict['language'].append(lang)
-                dataset_dict['id'].append(item['id'])
-            except Exception as e:
-                print(f"Error loading audio file {audio_path}: {str(e)}")
-                continue
-
-        return Dataset.from_dict(dataset_dict)
+    def load_local_dataset(self, lang: str) -> Optional[Dataset]:
+        """Load dataset from HuggingFace cache"""
+        try:
+            # Find the dataset path
+            dataset_path = self.find_dataset_path(lang)
+            if dataset_path is None:
+                return None
+                
+            # Load the dataset
+            dataset = load_from_disk(dataset_path)
+            
+            # Get the appropriate split
+            if self.data_type in dataset:
+                return dataset[self.data_type]
+            else:
+                print(f"Split {self.data_type} not found for language {lang}")
+                return None
+                
+        except Exception as e:
+            print(f"Error loading dataset for language {lang}: {str(e)}")
+            return None
 
     def load_datasets(self):
-        """Load datasets for all specified languages from local files"""
+        """Load datasets for all specified languages"""
         for lang in tqdm(self.languages, desc="Loading languages"):
             try:
                 # Load local dataset for the language
                 dataset = self.load_local_dataset(lang)
+                
+                if dataset is None:
+                    continue
                 
                 # Apply sampling if specified
                 if self.max_samples_per_language:
@@ -116,23 +116,38 @@ class MultilingualDataset:
         """Generate batches of data"""
         while True:
             for lang in self.languages:
+                if lang not in self.dataset_cache:
+                    continue
+                    
                 dataset = self.dataset_cache[lang]
+                indices = list(range(len(dataset)))
                 
-                for i in range(0, len(dataset), batch_size):
-                    batch_data = dataset[i:i + batch_size]
+                if self.config.dataset_config.get('shuffle', True):
+                    np.random.shuffle(indices)
+                
+                for i in range(0, len(indices), batch_size):
+                    batch_indices = indices[i:i + batch_size]
+                    batch_data = dataset.select(batch_indices)
                     
                     features_list = []
                     labels = []
                     
                     for item in batch_data:
-                        # Process audio
-                        audio_data = item['audio']['array']
-                        sampling_rate = item['audio']['sampling_rate']
-                        features = self.prepare_audio(audio_data, sampling_rate)
-                        features_list.append(features)
-                        
-                        # Get language label
-                        labels.append(self.language_to_id[lang])
+                        try:
+                            # Process audio
+                            audio_data = item['audio']['array']
+                            sampling_rate = item['audio']['sampling_rate']
+                            features = self.prepare_audio(audio_data, sampling_rate)
+                            features_list.append(features)
+                            
+                            # Get language label
+                            labels.append(self.language_to_id[lang])
+                        except Exception as e:
+                            print(f"Error processing item in {lang}: {str(e)}")
+                            continue
+                    
+                    if not features_list:
+                        continue
                     
                     # Pad features to same length
                     max_len = max(feat.shape[0] for feat in features_list)
