@@ -24,6 +24,7 @@ dataset_config:
   vocabulary: vocab/vocab.txt
   data_path: ./data/wavs/
   corpus_name: ./data/multilingual/
+  fleurs_path: ./data/fleurs/
   file_nums: 1
   max_audio_length: 2000
   shuffle_size: 1200
@@ -31,10 +32,12 @@ dataset_config:
   suffix: .txt
   load_type: multilingual
   train: train
-  dev: dev
+  dev: validation
   test: test
   languages_file: configs/languages.json
   max_samples_per_language: 10000
+  audio_format: wav
+  metadata_format: json
 
 optimizer_config:
   init_steps: 0

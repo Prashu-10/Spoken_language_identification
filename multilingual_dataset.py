@@ -3,9 +3,9 @@ import json
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from typing import List, Dict, Optional
-from datasets import load_dataset, Audio
-from transformers import Wav2Vec2Processor
+from typing import List, Dict, Optional, Any
+from datasets import Dataset, Audio
+import soundfile as sf
 from featurizers.speech_featurizers import NumpySpeechFeaturizer
 from configs.config import Config
 from vocab.vocab import Vocab
@@ -35,12 +35,58 @@ class MultilingualDataset:
         # Load FLEURS dataset for multiple languages
         self.load_datasets()
 
+    def load_local_dataset(self, lang: str) -> Dataset:
+        """Load dataset from local files for a specific language"""
+        lang_path = os.path.join(self.config.dataset_config['fleurs_path'], lang, self.data_type)
+        if not os.path.exists(lang_path):
+            raise ValueError(f"Dataset path not found: {lang_path}")
+
+        # Load metadata
+        metadata_file = os.path.join(lang_path, f"metadata.{self.config.dataset_config['metadata_format']}")
+        if not os.path.exists(metadata_file):
+            raise ValueError(f"Metadata file not found: {metadata_file}")
+
+        with open(metadata_file, 'r', encoding='utf-8') as f:
+            metadata = json.load(f)
+
+        # Create dataset dictionary
+        dataset_dict = {
+            'audio': [],
+            'transcription': [],
+            'language': [],
+            'id': []
+        }
+
+        # Process each sample
+        for item in metadata['data']:
+            audio_path = os.path.join(lang_path, 'audio', f"{item['id']}.{self.config.dataset_config['audio_format']}")
+            if not os.path.exists(audio_path):
+                print(f"Warning: Audio file not found: {audio_path}")
+                continue
+
+            try:
+                # Load audio file
+                audio_data, sample_rate = sf.read(audio_path)
+                dataset_dict['audio'].append({
+                    'array': audio_data,
+                    'sampling_rate': sample_rate,
+                    'path': audio_path
+                })
+                dataset_dict['transcription'].append(item.get('transcription', ''))
+                dataset_dict['language'].append(lang)
+                dataset_dict['id'].append(item['id'])
+            except Exception as e:
+                print(f"Error loading audio file {audio_path}: {str(e)}")
+                continue
+
+        return Dataset.from_dict(dataset_dict)
+
     def load_datasets(self):
-        """Load datasets for all specified languages"""
+        """Load datasets for all specified languages from local files"""
         for lang in tqdm(self.languages, desc="Loading languages"):
             try:
-                # Load FLEURS dataset for the language
-                dataset = load_dataset("google/fleurs", lang, split=self.data_type)
+                # Load local dataset for the language
+                dataset = self.load_local_dataset(lang)
                 
                 # Apply sampling if specified
                 if self.max_samples_per_language:
