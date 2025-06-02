@@ -8,6 +8,8 @@ speech_config:
   normalize_signal: True
   normalize_feature: True
   normalize_per_feature: False
+  use_fma: True
+  use_neon: False
 
 model_config:
   name: acrnn
@@ -16,20 +18,23 @@ model_config:
   kernel_size: [[11,5],[11,5],[11,5]]
   rnn_cell: 256
   seq_mask: True
+  num_languages: 100
 
 dataset_config:
   vocabulary: vocab/vocab.txt
   data_path: ./data/wavs/
-  corpus_name: ./data/demo_txt/demo
+  corpus_name: ./data/multilingual/
   file_nums: 1
   max_audio_length: 2000
   shuffle_size: 1200
   data_length: None
   suffix: .txt
-  load_type: txt
+  load_type: multilingual
   train: train
   dev: dev
   test: test
+  languages_file: configs/languages.json
+  max_samples_per_language: 10000
 
 optimizer_config:
   init_steps: 0
@@ -38,12 +43,15 @@ optimizer_config:
   beta1: 0.9
   beta2: 0.999
   epsilon: 1e-9
+  use_mixed_precision: True
 
 running_config:
-  prefetch: False
-  load_weights: ./saved_weights/20230228-084356/last/model
+  prefetch: True
+  load_weights: ./saved_weights/multilingual/last/model
   num_epochs: 100
-  batch_size: 1
-  train_steps: 50
-  dev_steps: 10
-  test_steps: 10
+  batch_size: 32
+  train_steps: 1000
+  dev_steps: 100
+  test_steps: 100
+  save_interval: 5
+  eval_interval: 1

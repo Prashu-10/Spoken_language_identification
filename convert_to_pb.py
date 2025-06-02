@@ -20,25 +20,38 @@ speech_featurizer.set_mel_filter(librosa_mel_filter)
 
 vocab = Vocab(vocabulary)
 
-# build model
-model=Model(**config.model_config,vocab_size=len(vocab.token_list))
+# Build model
+model = Model(**config.model_config, vocab_size=len(vocab.token_list))
 model.init_build([None, config.speech_config['num_feature_bins']]) 
 model.load_weights(weights_dir + "last/model")
 model.add_featurizers(speech_featurizer)
 
-
 version = 2
-#****convert to pb******
-tf.saved_model.save(model, "saved_models/lang14/pb/" + str(version))
-print('convert to pb model successful')
 
-#****convert to serving******
+# Convert to SavedModel format with signatures
+@tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.float32)])
+def predict_fn(signal):
+    output, prob = model.predict_pb(signal)
+    return {"output_0": output, "output_1": prob}
+
+# Save model with proper signatures
 tf.saved_model.save(
     model,
-    "./saved_models/lang14/serving/"+str(version),
+    f"saved_models/lang14/pb/{version}",
     signatures={
-        'predict_pb': model.predict_pb
-    }   
+        "serving_default": predict_fn,
+        "predict_pb": model.predict_pb
+    }
 )
+print('Model converted to SavedModel format successfully')
 
-print('convert to serving model successful')
+# Save model for TensorFlow Serving
+tf.saved_model.save(
+    model,
+    f"saved_models/lang14/serving/{version}",
+    signatures={
+        "serving_default": predict_fn,
+        "predict_pb": model.predict_pb
+    }
+)
+print('Model converted for TensorFlow Serving successfully')
