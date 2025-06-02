@@ -36,7 +36,20 @@ class MultilingualDataset:
         self.load_datasets()
 
     def find_dataset_path(self, lang: str) -> Optional[str]:
-        """Find the dataset path in HuggingFace cache"""
+        """Find the dataset path in local hub/datasets structure or HuggingFace cache"""
+        # First try local data directory
+        local_dir = os.path.join("data", "fleurs", "hub", "datasets--google--fluers")
+        if os.path.exists(local_dir):
+            # Look for blob directories
+            blob_dirs = [d for d in os.listdir(local_dir) if d.startswith("blobs")]
+            if blob_dirs:
+                # Use the first blob directory found
+                dataset_path = os.path.join(local_dir, blob_dirs[0], lang)
+                if os.path.exists(dataset_path):
+                    print(f"Found local dataset for {lang} at {dataset_path}")
+                    return dataset_path
+
+        # Fallback to HuggingFace cache
         cache_dir = os.path.expanduser("~/.cache/huggingface/datasets")
         dataset_dir = os.path.join(cache_dir, "google-fleurs", lang)
         
