@@ -13,6 +13,22 @@ def setup_mixed_precision():
     policy = tf.keras.mixed_precision.Policy('mixed_float16')
     tf.keras.mixed_precision.set_global_policy(policy)
 
+class ExpandDimsLayer(tf.keras.layers.Layer):
+    def __init__(self, axis=-1, **kwargs):
+        super().__init__(**kwargs)
+        self.axis = axis
+        
+    def call(self, inputs):
+        return tf.expand_dims(inputs, axis=self.axis)
+
+class SqueezeLayer(tf.keras.layers.Layer):
+    def __init__(self, axis=-1, **kwargs):
+        super().__init__(**kwargs)
+        self.axis = axis
+        
+    def call(self, inputs):
+        return tf.squeeze(inputs, axis=self.axis)
+
 def create_model(config, num_languages):
     """Create the model with support for multiple languages"""
     inputs = tf.keras.Input(shape=(None, config.speech_config['num_feature_bins']))
@@ -20,14 +36,15 @@ def create_model(config, num_languages):
     
     # CNN layers
     for filters, kernel in zip(config.model_config['filters'], config.model_config['kernel_size']):
+        x = ExpandDimsLayer(axis=-1)(x)
         x = tf.keras.layers.Conv2D(
             filters=filters,
             kernel_size=kernel,
             padding='same',
             activation='relu'
-        )(tf.expand_dims(x, axis=-1))
+        )(x)
         x = tf.keras.layers.BatchNormalization()(x)
-        x = tf.squeeze(x, axis=-1)
+        x = SqueezeLayer(axis=-1)(x)
     
     # BiLSTM layers
     x = tf.keras.layers.Bidirectional(
