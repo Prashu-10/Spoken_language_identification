@@ -6,7 +6,7 @@ from tqdm import tqdm
 from typing import List, Dict, Optional
 from datasets import load_dataset, Audio
 from transformers import Wav2Vec2Processor
-from featurizers.speech_featurizers import SpeechFeaturizer
+from featurizers.speech_featurizers import NumpySpeechFeaturizer
 from configs.config import Config
 from vocab.vocab import Vocab
 
@@ -16,7 +16,7 @@ class MultilingualDataset:
         config: Config,
         languages: List[str],
         vocab: Vocab,
-        speech_featurizer: SpeechFeaturizer,
+        speech_featurizer: NumpySpeechFeaturizer,
         data_type: str = "train",
         max_samples_per_language: Optional[int] = None
     ):
@@ -52,7 +52,7 @@ class MultilingualDataset:
                 print(f"Error loading dataset for {lang}: {str(e)}")
 
     def prepare_audio(self, audio_data: np.ndarray, sampling_rate: int) -> np.ndarray:
-        """Process audio data to extract features"""
+        """Process audio data to extract features using NumPy-based extraction"""
         if sampling_rate != self.config.speech_config['sample_rate']:
             # Resample if necessary
             import librosa
@@ -62,7 +62,7 @@ class MultilingualDataset:
                 target_sr=self.config.speech_config['sample_rate']
             )
         
-        # Extract features using the speech featurizer
+        # Extract features using NumPy-based feature extraction
         features = self.speech_featurizer.extract(audio_data)
         return features
 

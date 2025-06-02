@@ -4,7 +4,7 @@ import tensorflow as tf
 from tqdm import tqdm
 from datetime import datetime
 from multilingual_dataset import MultilingualDataset
-from featurizers.speech_featurizers import SpeechFeaturizer
+from featurizers.speech_featurizers import NumpySpeechFeaturizer
 from configs.config import Config
 from vocab.vocab import Vocab
 
@@ -61,7 +61,7 @@ def main():
     
     # Initialize components
     vocab = Vocab(config.dataset_config['vocabulary'])
-    speech_featurizer = SpeechFeaturizer(config.speech_config)
+    speech_featurizer = NumpySpeechFeaturizer(config.speech_config)
     
     # Create datasets
     train_dataset = MultilingualDataset(
