@@ -132,8 +132,8 @@ class MultilingualDataset:
                     shard_path = os.path.join(dataset_path, f"fleurs-train-{i:05d}-of-{num_shards:05d}.arrow")
                     if os.path.exists(shard_path):
                         try:
-                            # Load dataset with memory mapping to avoid PyArrow conversion issues
-                            shard_dataset = Dataset.from_file(shard_path, keep_in_memory=False)
+                            # Load dataset shard
+                            shard_dataset = Dataset.from_file(shard_path)
                             shards.append(shard_dataset)
                         except Exception as e:
                             print(f"Error loading shard {i} for language {lang}: {str(e)}")
@@ -158,8 +158,7 @@ class MultilingualDataset:
                     print(f"Dataset file not found: {file_path}")
                     return None
                 try:
-                    # Load dataset with memory mapping
-                    dataset = Dataset.from_file(file_path, keep_in_memory=False)
+                    dataset = Dataset.from_file(file_path)
                     return dataset
                 except Exception as e:
                     print(f"Error loading {self.data_type} dataset for language {lang}: {str(e)}")
@@ -222,19 +221,30 @@ class MultilingualDataset:
                     features_list = []
                     labels = []
                     
-                    # Get batch items one by one to avoid PyArrow conversion issues
+                    # Process items one at a time
                     for idx in batch_indices:
                         try:
-                            # Get item and immediately convert to dict
+                            # Get item and ensure it's a dictionary
                             item = dataset[idx]
                             if not isinstance(item, dict):
                                 item = dict(item)
                             
                             # Process audio data
-                            audio_array = item['audio']['array']
+                            audio_data = item['audio']
+                            if isinstance(audio_data, dict):
+                                audio_array = audio_data.get('array')
+                                sampling_rate = audio_data.get('sampling_rate')
+                            else:
+                                print(f"Unexpected audio data format for item {idx} in {lang}")
+                                continue
+                                
+                            if audio_array is None or sampling_rate is None:
+                                print(f"Missing audio data or sampling rate for item {idx} in {lang}")
+                                continue
+                                
+                            # Convert audio array if needed
                             if isinstance(audio_array, (list, tuple)):
                                 audio_array = np.array(audio_array)
-                            sampling_rate = item['audio']['sampling_rate']
                             
                             # Extract features
                             features = self.prepare_audio(audio_array, sampling_rate)
