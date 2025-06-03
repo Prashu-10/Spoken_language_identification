@@ -68,10 +68,20 @@ class MultilingualDataset:
             # Verify that necessary files exist
             required_files = [
                 "dataset_info.json",
-                "fleurs-train-00000-of-00003.arrow",
                 "fleurs-validation.arrow",
                 "fleurs-test.arrow"
             ]
+            
+            # Check for at least one training shard
+            train_shard_found = False
+            for file in os.listdir(dataset_path):
+                if file.startswith("fleurs-train-") and file.endswith(".arrow"):
+                    train_shard_found = True
+                    break
+            
+            if not train_shard_found:
+                print(f"No training shards found for language {lang}")
+                return None
             
             for file in required_files:
                 if not os.path.exists(os.path.join(dataset_path, file)):
@@ -85,6 +95,21 @@ class MultilingualDataset:
             print(f"Error accessing hash directory for language {lang}: {str(e)}")
             return None
 
+    def get_num_shards(self, dataset_path: str) -> int:
+        """Determine the number of training shards in the dataset"""
+        shard_files = [f for f in os.listdir(dataset_path) if f.startswith("fleurs-train-") and f.endswith(".arrow")]
+        if not shard_files:
+            return 0
+            
+        # Extract the total number of shards from the filename pattern
+        # Example: "fleurs-train-00000-of-00004.arrow" -> 4
+        sample_file = shard_files[0]
+        try:
+            total_shards = int(sample_file.split("-of-")[1].split(".")[0])
+            return total_shards
+        except:
+            return len(shard_files)
+
     def load_local_dataset(self, lang: str) -> Optional[Dataset]:
         """Load dataset from local directory"""
         try:
@@ -95,10 +120,16 @@ class MultilingualDataset:
                 
             # Load the dataset based on the data type
             if self.data_type == "train":
-                # For training data, we need to load and concatenate multiple shards
+                # Determine number of shards
+                num_shards = self.get_num_shards(dataset_path)
+                if num_shards == 0:
+                    print(f"No training shards found for language {lang}")
+                    return None
+                
+                # Load all available shards
                 shards = []
-                for i in range(3):  # We know there are 3 shards for training
-                    shard_path = os.path.join(dataset_path, f"fleurs-train-{i:05d}-of-00003.arrow")
+                for i in range(num_shards):
+                    shard_path = os.path.join(dataset_path, f"fleurs-train-{i:05d}-of-{num_shards:05d}.arrow")
                     if os.path.exists(shard_path):
                         shard_dataset = Dataset.from_file(shard_path)
                         shards.append(shard_dataset)
