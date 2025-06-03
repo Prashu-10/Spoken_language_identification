@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from typing import List, Dict, Optional
-from datasets import load_dataset, Dataset, load_from_disk
+from datasets import load_dataset, Dataset, load_from_disk, concatenate_datasets
 from huggingface_hub import HfFileSystem
 from featurizers.speech_featurizers import NumpySpeechFeaturizer
 from configs.config import Config
@@ -36,56 +36,75 @@ class MultilingualDataset:
         self.load_datasets()
 
     def find_dataset_path(self, lang: str) -> Optional[str]:
-        """Find the dataset path in local hub/datasets structure or HuggingFace cache"""
-        # First try local data directory
-        local_dir = os.path.join("data", "fleurs", "hub", "datasets--google--fluers")
-        if os.path.exists(local_dir):
-            # Look for blob directories
-            blob_dirs = [d for d in os.listdir(local_dir) if d.startswith("blobs")]
-            if blob_dirs:
-                # Use the first blob directory found
-                dataset_path = os.path.join(local_dir, blob_dirs[0], lang)
-                if os.path.exists(dataset_path):
-                    print(f"Found local dataset for {lang} at {dataset_path}")
-                    return dataset_path
-
-        # Fallback to HuggingFace cache
-        cache_dir = os.path.expanduser("~/.cache/huggingface/datasets")
-        dataset_dir = os.path.join(cache_dir, "google-fleurs", lang)
+        """Find the dataset path in the local datasets directory structure"""
+        # Dataset root directory
+        dataset_root = os.path.join("fleurs", "datasets", "google__fluers", lang)
         
-        if not os.path.exists(dataset_dir):
+        if not os.path.exists(dataset_root):
             print(f"Dataset directory not found for language {lang}")
             return None
             
-        # Look for the downloaded version
-        versions = [d for d in os.listdir(dataset_dir) if os.path.isdir(os.path.join(dataset_dir, d))]
+        # Look for version directories (e.g., 2.0.0)
+        versions = [d for d in os.listdir(dataset_root) if os.path.isdir(os.path.join(dataset_root, d))]
         if not versions:
             print(f"No dataset versions found for language {lang}")
             return None
             
         # Use the latest version
         latest_version = sorted(versions)[-1]
-        dataset_path = os.path.join(dataset_dir, latest_version)
+        dataset_path = os.path.join(dataset_root, latest_version)
         
-        return dataset_path if os.path.exists(dataset_path) else None
+        # Verify that necessary files exist
+        required_files = [
+            "dataset_info.json",
+            "fleurs-train-00000-of-00003.arrow",
+            "fleurs-validation.arrow",
+            "fleurs-test.arrow"
+        ]
+        
+        for file in required_files:
+            if not os.path.exists(os.path.join(dataset_path, file)):
+                print(f"Missing required file {file} for language {lang}")
+                return None
+                
+        print(f"Found dataset for {lang} at {dataset_path}")
+        return dataset_path
 
     def load_local_dataset(self, lang: str) -> Optional[Dataset]:
-        """Load dataset from HuggingFace cache"""
+        """Load dataset from local directory"""
         try:
             # Find the dataset path
             dataset_path = self.find_dataset_path(lang)
             if dataset_path is None:
                 return None
                 
-            # Load the dataset
-            dataset = load_from_disk(dataset_path)
-            
-            # Get the appropriate split
-            if self.data_type in dataset:
-                return dataset[self.data_type]
+            # Load the dataset based on the data type
+            if self.data_type == "train":
+                # For training data, we need to load and concatenate multiple shards
+                shards = []
+                for i in range(3):  # We know there are 3 shards for training
+                    shard_path = os.path.join(dataset_path, f"fleurs-train-{i:05d}-of-00003.arrow")
+                    if os.path.exists(shard_path):
+                        shard_dataset = Dataset.from_file(shard_path)
+                        shards.append(shard_dataset)
+                    else:
+                        print(f"Warning: Missing shard {i} for language {lang}")
+                
+                if not shards:
+                    print(f"No training shards found for language {lang}")
+                    return None
+                    
+                # Concatenate all shards
+                dataset = concatenate_datasets(shards)
             else:
-                print(f"Split {self.data_type} not found for language {lang}")
-                return None
+                # For validation and test, we have single files
+                file_path = os.path.join(dataset_path, f"fleurs-{self.data_type}.arrow")
+                if not os.path.exists(file_path):
+                    print(f"Dataset file not found: {file_path}")
+                    return None
+                dataset = Dataset.from_file(file_path)
+            
+            return dataset
                 
         except Exception as e:
             print(f"Error loading dataset for language {lang}: {str(e)}")
