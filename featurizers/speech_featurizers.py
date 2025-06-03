@@ -235,10 +235,12 @@ class NumpySpeechFeaturizer(SpeechFeaturizer):
         if len(signal) < self.nfft:
             print(f"[Skip] Signal too short for STFT: len({len(signal)}) < nfft = {self.nfft}")
             return np.zeros((self.nfft//2 + 1 ,1))
-        max_len = 10 * self.sample_rate
+        max_len = 320000  # Increased from 160000 to match other parts of the code
         if len(signal) > max_len:
             print(f"[Truncate] Signal too long for STFT: len({len(signal)}) > max_len = {max_len}")
-            signal = signal[:max_len]
+            # Take the center portion of the signal
+            start = (len(signal) - max_len) // 2
+            signal = signal[start:start + max_len]
         return np.square(
             np.abs(librosa.core.stft(signal, n_fft=self.nfft, hop_length=self.frame_step,
                                      win_length=self.frame_length, center=True, window="hann")))
@@ -319,7 +321,7 @@ class NumpySpeechFeaturizer(SpeechFeaturizer):
     def compute_log_mel_spectrogram(self, signal: np.ndarray) -> np.ndarray:
         """Compute log mel spectrogram with proper error handling for long signals"""
         try:
-            # Handle long signals
+            # Handle long signals - using the same max_len as stft
             max_len = 320000  # Maximum length for STFT
             if len(signal) > max_len:
                 print(f"[Truncate] Signal too long: len({len(signal)}) > max_len = {max_len}")
@@ -328,7 +330,7 @@ class NumpySpeechFeaturizer(SpeechFeaturizer):
                 signal = signal[start:start + max_len]
             
             # Compute STFT
-            S = self.stft(signal)
+            S = self.stft(signal)  # stft will handle any remaining length issues
             
             # Create mel filterbank if not already created
             if self.mel_filter is None:

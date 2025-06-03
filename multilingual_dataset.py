@@ -190,24 +190,19 @@ class MultilingualDataset:
     def prepare_audio(self, audio_data: np.ndarray, sampling_rate: int) -> np.ndarray:
         """Process audio data to extract features using NumPy-based extraction"""
         try:
+            # Import librosa here to ensure it's available
+            import librosa
+            
             if sampling_rate != self.config.speech_config['sample_rate']:
                 # Resample if necessary
-                import librosa
                 audio_data = librosa.resample(
-                    audio_data, 
+                    y=audio_data, 
                     orig_sr=sampling_rate, 
                     target_sr=self.config.speech_config['sample_rate']
                 )
 
             # Trim silence
             audio_data, _ = librosa.effects.trim(audio_data, top_db=30)
-            
-            # Handle long audio by splitting into chunks if necessary
-            max_samples = 320000  # Maximum samples for STFT
-            if len(audio_data) > max_samples:
-                # Take the center portion of the audio
-                start = (len(audio_data) - max_samples) // 2
-                audio_data = audio_data[start:start + max_samples]
             
             # Extract features using the speech featurizer
             features = self.speech_featurizer.extract(audio_data)
