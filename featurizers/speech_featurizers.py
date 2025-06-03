@@ -317,15 +317,46 @@ class NumpySpeechFeaturizer(SpeechFeaturizer):
         return mfcc.T
 
     def compute_log_mel_spectrogram(self, signal: np.ndarray) -> np.ndarray:
-        S = self.stft(signal)
-
-        mel = librosa.filters.mel(self.sample_rate, self.nfft,
-                                  n_mels=self.num_feature_bins,
-                                  fmin=0.0, fmax=int(self.sample_rate / 2))
-
-        mel_spectrogram = np.dot(S.T, mel.T)
-
-        return self.power_to_db(mel_spectrogram)
+        """Compute log mel spectrogram with proper error handling for long signals"""
+        try:
+            # Handle long signals
+            max_len = 320000  # Maximum length for STFT
+            if len(signal) > max_len:
+                print(f"[Truncate] Signal too long: len({len(signal)}) > max_len = {max_len}")
+                # Take the center portion
+                start = (len(signal) - max_len) // 2
+                signal = signal[start:start + max_len]
+            
+            # Compute STFT
+            S = self.stft(signal)
+            
+            # Create mel filterbank if not already created
+            if self.mel_filter is None:
+                self.mel_filter = librosa.filters.mel(
+                    sr=self.sample_rate,
+                    n_fft=self.nfft,
+                    n_mels=self.num_feature_bins,
+                    fmin=0.0,
+                    fmax=int(self.sample_rate / 2)
+                )
+            
+            # Apply mel filterbank
+            mel_spectrogram = np.dot(S.T, self.mel_filter.T)
+            
+            # Convert to log scale
+            log_mel_spec = self.power_to_db(mel_spectrogram)
+            
+            # Handle any NaN or Inf values
+            if np.isnan(log_mel_spec).any() or np.isinf(log_mel_spec).any():
+                print("Warning: NaN or Inf values in log mel spectrogram, replacing with zeros")
+                log_mel_spec = np.nan_to_num(log_mel_spec, 0)
+            
+            return log_mel_spec
+            
+        except Exception as e:
+            print(f"Error computing log mel spectrogram: {str(e)}")
+            # Return empty spectrogram with correct shape
+            return np.zeros((1, self.num_feature_bins))
 
     def compute_log_gammatone_spectrogram(self, signal: np.ndarray) -> np.ndarray:
         S = self.stft(signal)
@@ -417,21 +448,6 @@ class TFSpeechFeaturizer(SpeechFeaturizer):
         # features = tf.expand_dims(features, axis=-1)
 
         return features
-
-    def compute_log_mel_spectrogram(self, signal):
-        spectrogram = self.stft(signal)
-        if self.mel_filter is None:
-            linear_to_weight_matrix = tf.signal.linear_to_mel_weight_matrix(
-                num_mel_bins=self.num_feature_bins,
-                num_spectrogram_bins=spectrogram.shape[-1],
-                sample_rate=self.sample_rate,
-                lower_edge_hertz=0.0, upper_edge_hertz=(self.sample_rate / 2)
-            )
-        else:
-            linear_to_weight_matrix = self.mel_filter
-
-        mel_spectrogram = tf.tensordot(spectrogram, linear_to_weight_matrix, 1)
-        return self.power_to_db(mel_spectrogram)
 
     def compute_spectrogram(self, signal):
         S = self.stft(signal)

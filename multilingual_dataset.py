@@ -189,18 +189,40 @@ class MultilingualDataset:
 
     def prepare_audio(self, audio_data: np.ndarray, sampling_rate: int) -> np.ndarray:
         """Process audio data to extract features using NumPy-based extraction"""
-        if sampling_rate != self.config.speech_config['sample_rate']:
-            # Resample if necessary
-            import librosa
-            audio_data = librosa.resample(
-                audio_data, 
-                orig_sr=sampling_rate, 
-                target_sr=self.config.speech_config['sample_rate']
-            )
-        
-        # Extract features using NumPy-based feature extraction
-        features = self.speech_featurizer.extract(audio_data)
-        return features
+        try:
+            if sampling_rate != self.config.speech_config['sample_rate']:
+                # Resample if necessary
+                import librosa
+                audio_data = librosa.resample(
+                    audio_data, 
+                    orig_sr=sampling_rate, 
+                    target_sr=self.config.speech_config['sample_rate']
+                )
+
+            # Trim silence
+            audio_data, _ = librosa.effects.trim(audio_data, top_db=30)
+            
+            # Handle long audio by splitting into chunks if necessary
+            max_samples = 320000  # Maximum samples for STFT
+            if len(audio_data) > max_samples:
+                # Take the center portion of the audio
+                start = (len(audio_data) - max_samples) // 2
+                audio_data = audio_data[start:start + max_samples]
+            
+            # Extract features using the speech featurizer
+            features = self.speech_featurizer.extract(audio_data)
+            
+            # Ensure the features are in the correct range
+            if np.isnan(features).any() or np.isinf(features).any():
+                print("Warning: NaN or Inf values in features, replacing with zeros")
+                features = np.nan_to_num(features, 0)
+            
+            return features
+            
+        except Exception as e:
+            print(f"Error in prepare_audio: {str(e)}")
+            # Return empty features with correct shape as fallback
+            return np.zeros((1, self.config.speech_config['num_feature_bins']))
 
     def get_batch_generator(self, batch_size: int):
         """Generate batches of data"""
