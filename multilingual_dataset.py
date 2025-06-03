@@ -131,8 +131,12 @@ class MultilingualDataset:
                 for i in range(num_shards):
                     shard_path = os.path.join(dataset_path, f"fleurs-train-{i:05d}-of-{num_shards:05d}.arrow")
                     if os.path.exists(shard_path):
-                        shard_dataset = Dataset.from_file(shard_path)
-                        shards.append(shard_dataset)
+                        try:
+                            # Load dataset with memory mapping to avoid PyArrow conversion issues
+                            shard_dataset = Dataset.from_file(shard_path, keep_in_memory=False)
+                            shards.append(shard_dataset)
+                        except Exception as e:
+                            print(f"Error loading shard {i} for language {lang}: {str(e)}")
                     else:
                         print(f"Warning: Missing shard {i} for language {lang}")
                 
@@ -141,16 +145,25 @@ class MultilingualDataset:
                     return None
                     
                 # Concatenate all shards
-                dataset = concatenate_datasets(shards)
+                try:
+                    dataset = concatenate_datasets(shards)
+                    return dataset
+                except Exception as e:
+                    print(f"Error concatenating shards for language {lang}: {str(e)}")
+                    return None
             else:
                 # For validation and test, we have single files
                 file_path = os.path.join(dataset_path, f"fleurs-{self.data_type}.arrow")
                 if not os.path.exists(file_path):
                     print(f"Dataset file not found: {file_path}")
                     return None
-                dataset = Dataset.from_file(file_path)
-            
-            return dataset
+                try:
+                    # Load dataset with memory mapping
+                    dataset = Dataset.from_file(file_path, keep_in_memory=False)
+                    return dataset
+                except Exception as e:
+                    print(f"Error loading {self.data_type} dataset for language {lang}: {str(e)}")
+                    return None
                 
         except Exception as e:
             print(f"Error loading dataset for language {lang}: {str(e)}")
@@ -205,23 +218,32 @@ class MultilingualDataset:
                 
                 for i in range(0, len(indices), batch_size):
                     batch_indices = indices[i:i + batch_size]
-                    batch_data = dataset.select(batch_indices)
                     
                     features_list = []
                     labels = []
                     
-                    for item in batch_data:
+                    # Get batch items one by one to avoid PyArrow conversion issues
+                    for idx in batch_indices:
                         try:
-                            # Process audio
-                            audio_data = item['audio']['array']
+                            # Get item and immediately convert to dict
+                            item = dataset[idx]
+                            if not isinstance(item, dict):
+                                item = dict(item)
+                            
+                            # Process audio data
+                            audio_array = item['audio']['array']
+                            if isinstance(audio_array, (list, tuple)):
+                                audio_array = np.array(audio_array)
                             sampling_rate = item['audio']['sampling_rate']
-                            features = self.prepare_audio(audio_data, sampling_rate)
+                            
+                            # Extract features
+                            features = self.prepare_audio(audio_array, sampling_rate)
                             features_list.append(features)
                             
                             # Get language label
                             labels.append(self.language_to_id[lang])
                         except Exception as e:
-                            print(f"Error processing item in {lang}: {str(e)}")
+                            print(f"Error processing item {idx} in {lang}: {str(e)}")
                             continue
                     
                     if not features_list:
