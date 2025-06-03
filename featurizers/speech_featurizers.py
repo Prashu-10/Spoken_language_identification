@@ -232,10 +232,18 @@ class NumpySpeechFeaturizer(SpeechFeaturizer):
         return [None, self.num_feature_bins, channel_dim]
 
     def stft(self, signal):
+        if len(signal) < self.nfft:
+            print(f"[Skip] Signal too short for STFT: len({len(signal)}) < nfft = {self.nfft}")
+            return np.zeros((self.nfft//2 + 1 ,1))
+        max_len = 10 * self.sample_rate
+        if len(signal) > max_len:
+            print(f"[Truncate] Signal too long for STFT: len({len(signal)}) > max_len = {max_len}")
+            signal = signal[:max_len]
         return np.square(
             np.abs(librosa.core.stft(signal, n_fft=self.nfft, hop_length=self.frame_step,
                                      win_length=self.frame_length, center=True, window="hann")))
 
+    
     def power_to_db(self, S, ref=1.0, amin=1e-10, top_db=80.0):
         return librosa.power_to_db(S, ref=ref, amin=amin, top_db=top_db)
 
