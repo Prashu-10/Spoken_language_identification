@@ -52,23 +52,38 @@ class MultilingualDataset:
             
         # Use the latest version
         latest_version = sorted(versions)[-1]
-        dataset_path = os.path.join(dataset_root, latest_version)
+        version_path = os.path.join(dataset_root, latest_version)
         
-        # Verify that necessary files exist
-        required_files = [
-            "dataset_info.json",
-            "fleurs-train-00000-of-00003.arrow",
-            "fleurs-validation.arrow",
-            "fleurs-test.arrow"
-        ]
-        
-        for file in required_files:
-            if not os.path.exists(os.path.join(dataset_path, file)):
-                print(f"Missing required file {file} for language {lang}")
+        # Look for hash directory
+        try:
+            hash_dirs = [d for d in os.listdir(version_path) if os.path.isdir(os.path.join(version_path, d))]
+            if not hash_dirs:
+                print(f"No hash directory found for language {lang}")
                 return None
-                
-        print(f"Found dataset for {lang} at {dataset_path}")
-        return dataset_path
+            
+            # Use the first hash directory found
+            hash_dir = hash_dirs[0]
+            dataset_path = os.path.join(version_path, hash_dir)
+            
+            # Verify that necessary files exist
+            required_files = [
+                "dataset_info.json",
+                "fleurs-train-00000-of-00003.arrow",
+                "fleurs-validation.arrow",
+                "fleurs-test.arrow"
+            ]
+            
+            for file in required_files:
+                if not os.path.exists(os.path.join(dataset_path, file)):
+                    print(f"Missing required file {file} for language {lang}")
+                    return None
+                    
+            print(f"Found dataset for {lang} at {dataset_path}")
+            return dataset_path
+            
+        except Exception as e:
+            print(f"Error accessing hash directory for language {lang}: {str(e)}")
+            return None
 
     def load_local_dataset(self, lang: str) -> Optional[Dataset]:
         """Load dataset from local directory"""
